@@ -6,10 +6,10 @@ install.packages("openxlsx")
 library(tidyverse)
 library(openxlsx)
 
-# Set your working directory
+# Linking file to working directory
 setwd("C:/Users/carty/Downloads/studentEng/cleaned_learning_analytics_outputs")
 
-# Load the corrected master dataset
+# Loading master dataset
 master_data <- read_csv("student_engagement_master_dataset_corrected_survey_scores.csv")
 
 # Check the data
