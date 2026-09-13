@@ -1,0 +1,368 @@
+# Install packages
+install.packages("tidyverse")
+install.packages("openxlsx")
+
+# Load packages
+library(tidyverse)
+library(openxlsx)
+
+# Set your working directory
+setwd("C:/Users/carty/Downloads/studentEng/cleaned_learning_analytics_outputs")
+
+# Load the corrected master dataset
+master_data <- read_csv("student_engagement_master_dataset_corrected_survey_scores.csv")
+
+# Check the data
+glimpse(master_data)
+
+# Check the variable names
+names(master_data)
+
+analysis_data <- master_data %>%
+  select(
+    anonymized_id,
+    video_events_count,
+    concept_map_visits,
+    total_quiz_attempts,
+    intrinsic_load,
+    extraneous_load,
+    germane_load
+  )
+
+# Check missing values
+colSums(is.na(analysis_data))
+
+
+#students with complete survey data
+analysis_data <- analysis_data %>%
+  filter(
+    !is.na(intrinsic_load),
+    !is.na(extraneous_load),
+    !is.na(germane_load)
+  )
+
+# Check final sample size
+nrow(analysis_data)
+
+#Video interaction group: minimal vs. high video interaction
+analysis_data <- analysis_data %>%
+  mutate(
+    video_minimal_high_profile = case_when(
+      video_events_count >= 1 & video_events_count <= 4 ~ "Minimal video interaction",
+      video_events_count >= 5 ~ "High video interaction",
+      TRUE ~ NA_character_
+    )
+  )
+
+# Check group sizes
+analysis_data %>%
+  count(video_minimal_high_profile)
+
+#Binary video interaction group: no video interaction vs. video interaction
+analysis_data <- analysis_data %>%
+  mutate(
+    video_binary_profile = case_when(
+      video_events_count == 0 ~ "No video interaction",
+      video_events_count >= 1 ~ "Video interaction",
+      TRUE ~ NA_character_
+    )
+  )
+
+# Check group sizes
+analysis_data %>%
+  count(video_binary_profile)
+
+
+#Concept-map use group: minimal vs. high concept-map use
+analysis_data <- analysis_data %>%
+  mutate(
+    concept_map_use_profile = case_when(
+      concept_map_visits == 1 ~ "Minimal concept-map use",
+      concept_map_visits >= 2 ~ "High concept-map use",
+      TRUE ~ NA_character_
+    )
+  )
+
+# Check group sizes
+analysis_data %>%
+  count(concept_map_use_profile)
+
+#Quiz attempt group: one attempt vs. multiple attempts
+
+analysis_data <- analysis_data %>%
+  mutate(
+    quiz_attempt_profile = case_when(
+      total_quiz_attempts == 1 ~ "One quiz attempt",
+      total_quiz_attempts >= 2 ~ "Multiple quiz attempts",
+      TRUE ~ NA_character_
+    )
+  )
+
+# Check group sizes
+analysis_data %>%
+  count(quiz_attempt_profile)
+
+
+#function for descriptive statistics
+create_descriptive_table <- function(data, grouping_variable) {
+  
+  data %>%
+    filter(!is.na(.data[[grouping_variable]])) %>%
+    select(
+      all_of(grouping_variable),
+      intrinsic_load,
+      extraneous_load,
+      germane_load
+    ) %>%
+    pivot_longer(
+      cols = c(intrinsic_load, extraneous_load, germane_load),
+      names_to = "construct",
+      values_to = "score"
+    ) %>%
+    group_by(.data[[grouping_variable]], construct) %>%
+    summarise(
+      n = n(),
+      M = mean(score, na.rm = TRUE),
+      SD = sd(score, na.rm = TRUE),
+      .groups = "drop"
+    ) %>%
+    mutate(
+      construct = recode(
+        construct,
+        "intrinsic_load" = "Intrinsic load",
+        "extraneous_load" = "Extraneous load",
+        "germane_load" = "Germane load"
+      ),
+      M_SD = paste0(
+        sprintf("%.2f", M),
+        " (",
+        sprintf("%.2f", SD),
+        ")"
+      )
+    )
+}
+
+
+# Function for Kruskal–Wallis tests
+run_kruskal_tests <- function(data, grouping_variable) {
+  
+  constructs <- c(
+    "intrinsic_load",
+    "extraneous_load",
+    "germane_load"
+  )
+  
+  results <- map_dfr(constructs, function(var) {
+    
+    test_data <- data %>%
+      filter(!is.na(.data[[grouping_variable]]))
+    
+    formula_text <- paste(var, "~", grouping_variable)
+    
+    test_result <- kruskal.test(
+      as.formula(formula_text),
+      data = test_data
+    )
+    
+    tibble(
+      construct = var,
+      chi_square = as.numeric(test_result$statistic),
+      df = as.numeric(test_result$parameter),
+      p = test_result$p.value
+    )
+  })
+  
+  results %>%
+    mutate(
+      construct = recode(
+        construct,
+        "intrinsic_load" = "Intrinsic load",
+        "extraneous_load" = "Extraneous load",
+        "germane_load" = "Germane load"
+      ),
+      chi_square = round(chi_square, 2),
+      p_APA = case_when(
+        p < .001 ~ "< .001",
+        TRUE ~ sub("^0", "", sprintf("%.3f", p))
+      )
+    )
+}
+
+
+#descriptive table and p-values
+create_APA_table <- function(data, grouping_variable, group_column_name) {
+  
+  descriptive_table <- create_descriptive_table(data, grouping_variable)
+  test_table <- run_kruskal_tests(data, grouping_variable)
+  
+  descriptive_wide <- descriptive_table %>%
+    select(
+      group = all_of(grouping_variable),
+      n,
+      construct,
+      M_SD
+    ) %>%
+    pivot_wider(
+      names_from = construct,
+      values_from = M_SD
+    ) %>%
+    distinct()
+  
+  p_row <- test_table %>%
+    select(construct, p_APA) %>%
+    pivot_wider(
+      names_from = construct,
+      values_from = p_APA
+    ) %>%
+    mutate(
+      group = "p",
+      n = NA_integer_
+    ) %>%
+    select(group, n, everything())
+  
+  final_table <- bind_rows(descriptive_wide, p_row) %>%
+    rename(!!group_column_name := group)
+  
+  return(final_table)
+}
+
+
+
+# Create descriptive table
+video_minimal_high_descriptives <- create_descriptive_table(
+  data = analysis_data,
+  grouping_variable = "video_minimal_high_profile"
+)
+
+# Run Kruskal-Wallis tests
+video_minimal_high_tests <- run_kruskal_tests(
+  data = analysis_data,
+  grouping_variable = "video_minimal_high_profile"
+)
+
+# Create APA table
+table_1_video_minimal_high <- create_APA_table(
+  data = analysis_data,
+  grouping_variable = "video_minimal_high_profile",
+  group_column_name = "Video interaction profile"
+)
+
+# View results
+View(table_1_video_minimal_high)
+View(video_minimal_high_tests)
+
+# Print results
+table_1_video_minimal_high
+video_minimal_high_tests
+
+
+#Analysis 2
+# Create descriptive table
+video_binary_descriptives <- create_descriptive_table(
+  data = analysis_data,
+  grouping_variable = "video_binary_profile"
+)
+
+# Run Kruskal-Wallis tests
+video_binary_tests <- run_kruskal_tests(
+  data = analysis_data,
+  grouping_variable = "video_binary_profile"
+)
+
+# Create APA table
+table_2_video_binary <- create_APA_table(
+  data = analysis_data,
+  grouping_variable = "video_binary_profile",
+  group_column_name = "Video interaction profile"
+)
+
+# View results
+View(table_2_video_binary)
+View(video_binary_tests)
+
+# Print results
+table_2_video_binary
+video_binary_tests
+
+#analysis 3
+# Create descriptive table
+concept_map_descriptives <- create_descriptive_table(
+  data = analysis_data,
+  grouping_variable = "concept_map_use_profile"
+)
+
+# Run Kruskal-Wallis tests
+concept_map_tests <- run_kruskal_tests(
+  data = analysis_data,
+  grouping_variable = "concept_map_use_profile"
+)
+
+# Create APA table
+table_3_concept_map <- create_APA_table(
+  data = analysis_data,
+  grouping_variable = "concept_map_use_profile",
+  group_column_name = "Concept-map use profile"
+)
+
+# View results
+View(table_3_concept_map)
+View(concept_map_tests)
+
+# Print results
+table_3_concept_map
+concept_map_tests
+
+
+#analysis 4
+
+# Create descriptive table
+quiz_attempt_descriptives <- create_descriptive_table(
+  data = analysis_data,
+  grouping_variable = "quiz_attempt_profile"
+)
+
+# Run Kruskal-Wallis tests
+quiz_attempt_tests <- run_kruskal_tests(
+  data = analysis_data,
+  grouping_variable = "quiz_attempt_profile"
+)
+
+# Create APA table
+table_4_quiz_attempt <- create_APA_table(
+  data = analysis_data,
+  grouping_variable = "quiz_attempt_profile",
+  group_column_name = "Quiz attempt profile"
+)
+
+# View results
+View(table_4_quiz_attempt)
+View(quiz_attempt_tests)
+
+# Print results
+table_4_quiz_attempt
+quiz_attempt_tests
+
+
+write.xlsx(
+  list(
+    "Table 1 Video Minimal High" = table_1_video_minimal_high,
+    "Table 1 KW Tests" = video_minimal_high_tests,
+    
+    "Table 2 Video Binary" = table_2_video_binary,
+    "Table 2 KW Tests" = video_binary_tests,
+    
+    "Table 3 Concept Map" = table_3_concept_map,
+    "Table 3 KW Tests" = concept_map_tests,
+    
+    "Table 4 Quiz Attempts" = table_4_quiz_attempt,
+    "Table 4 KW Tests" = quiz_attempt_tests
+  ),
+  file = "revised_engagement_group_analysis_IL_EL_GL.xlsx",
+  rowNames = FALSE
+)
+
+getwd()
+write_csv(table_1_video_minimal_high, "table_1_video_minimal_high.csv")
+write_csv(table_2_video_binary, "table_2_video_binary.csv")
+write_csv(table_3_concept_map, "table_3_concept_map.csv")
+write_csv(table_4_quiz_attempt, "table_4_quiz_attempt.csv")
