@@ -2,7 +2,7 @@
 
 ### by Muhammed Shittu
 
-This project investigates how students' digital engagement with an online learning hub relates to their self-reported cognitive load, cognitive engagement, and perceived learner control. The learning hub included video materials, concept maps, quizzes, and a survey. The analysis focuses on whether different forms of platform interaction are associated with students' intrinsic load, extraneous load, and germane load.
+This project investigates how students' digital engagement with an online learning platform relates to their cognitive load, cognitive engagement, and perceived learner control. The learning platform included video materials, concept maps, quizzes, and a survey. The analysis focuses on whether different forms of platform interaction are associated with students' intrinsic load, extraneous load, and germane load.
 
 There are two main sections to this project:
 > In the first section, I performed exploratory data analysis and data preparation using student interaction logs and survey data from an online learning hub. I cleaned and merged data from page request events, video events, quiz attempts, and survey responses to create a student-level analytical dataset. The analysis examined how students interacted with learning resources such as videos, concept maps, and quizzes.
