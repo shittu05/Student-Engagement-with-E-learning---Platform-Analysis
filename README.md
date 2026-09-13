@@ -1,4 +1,4 @@
-# Student Engagement and Cognitive Load in an Online Learning Hub
+# Effect of cognitive load on student learning experiences and interactions with instructional materials in an online learning platofrm
 
 ### by Muhammed Shittu
 
